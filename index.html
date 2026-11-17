@@ -82,6 +82,8 @@ summary{cursor:pointer;font-size:12px;color:var(--acc)}
 .plist .pt{flex:1}
 .plist button{padding:2px 7px;font-size:11px}
 .gapline{font-size:12px;color:var(--sub);padding:0 0 9px 90px}
+.gapline button{padding:2px 8px;font-size:11px;margin-left:6px}
+.gapline .alts{background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px 10px;margin-top:6px}
 .empty{color:var(--sub);padding:30px;text-align:center}
 .warn{background:var(--hi2);color:var(--hi);border-radius:8px;padding:8px 12px;font-size:12.5px;margin-bottom:10px}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;opacity:0;transition:.2s;pointer-events:none}
@@ -304,6 +306,7 @@ footer a{color:var(--acc)}
 - <strong>5・10・20・30・50題</strong>：示説・空き時間とも、1枠にその数まで表示
 - <strong>無制限</strong>：スコアが付いたポスターを1枠にすべて表示（枠どうしで同じポスターが重なって出ることがあります）</p>
 <p>11題目以降は「さらに○題を表示」を押すと開きます。</p>
+<p>ポスター閲覧になった時間や「空き」の時間には「<strong>この時間の他の予定を見る</strong>」ボタンがあります。その時間に入れられるシンポジウムや演題（点数0のものも含む）が点数の高い順に並び、「これにする」で予定に入れられます（📌固定されます）。</p>
 <p>ポスターの一覧は「おすすめ順」と「<strong>番号順</strong>」を切り替えられます（各ポスター枠の右上、または「④ 条件」の「おすすめポスターの並び順」）。番号順にすると、ボードの並びどおりに会場を回れます。どちらにしても、選ばれるポスターは同じで、並び方だけが変わります。コピー・カレンダーに書き出すときも、この並び順になります。</p>
 <table>
 <thead>
@@ -565,7 +568,7 @@ function render(){
   document.getElementById("summary").innerHTML=`<div class="stat"><b>${cnt("S")}</b><span>シンポジウム・講演</span></div><div class="stat"><b>${cnt("O")}</b><span>口頭演題</span></div><div class="stat"><b>${cnt("M")}</b><span>ミニオーラル演題</span></div><div class="stat"><b>${(blocks.find(b=>b.kind==="P")?.posters?.length||0)+gapP}</b><span>おすすめポスター</span></div>`;
   if(!blocks.length&&!list.length){v.innerHTML=`<div class="empty">条件に合う予定がありません。</div>`;return}
   v.innerHTML=list.map(x=>{
-    if(x.kind==="FREE") return `<div class="gapline">― 空き ${fmt(x.st)}〜${fmt(x.en)}（${x.en-x.st}分）${d!==23&&x.st<780&&x.en>690?"｜ランチョンセミナーの時間帯です":""}</div>`;
+    if(x.kind==="FREE"){const ga=gapAlts(d,x.st,x.en);return `<div class="gapline">― 空き ${fmt(x.st)}〜${fmt(x.en)}（${x.en-x.st}分）${d!==23&&x.st<780&&x.en>690?"｜ランチョンセミナーの時間帯です":""} ${ga.btn}${ga.box}</div>`;}
     return `<div class="slot"><div class="time">${fmt(x.st)}<small>〜${fmt(x.en)}</small></div>${card(x,d,P[d].cands)}</div>`;
   }).join("");
 }
@@ -582,7 +585,7 @@ function posterList(ps){
 }
 function card(b,d,cands){
   if(b.kind==="G") return `<div class="card G"><div class="meta"><span class="typ" style="background:var(--tP)">ポスター閲覧</span><span class="venue">ポスター会場（もてなしドーム）</span><span>空き時間のおすすめ</span>${psortSeg()}</div>
-    <div class="ttl">空き時間にポスターを見に行きましょう（${b.posters.length}題）</div><div class="sub">示説時間外のため発表者は不在のことがあります。☆で優先、✕で候補から外せます。</div>${posterList(b.posters)}</div>`;
+    <div class="ttl">空き時間にポスターを見に行きましょう（${b.posters.length}題）</div><div class="sub">示説時間外のため発表者は不在のことがあります。☆で優先、✕で候補から外せます。</div>${posterList(b.posters)}${(()=>{const ga=gapAlts(d,b.st,b.en);return `<div class="acts"><a href="${gcal(b,d)}" target="_blank" rel="noopener">＋Google</a>${ga.btn}</div>${ga.box}`})()}</div>`;
   if(b.kind==="P") return `<div class="card P ${b.pinned?"pinned":""}"><div class="meta"><span class="typ" style="background:var(--tP)">ポスター示説</span><span class="venue">ポスター会場（もてなしドーム）</span><span>発表者がボード前に待機する時間</span>${psortSeg()}</div>
     <div class="ttl">ポスター見学：おすすめ ${b.posters.length}題</div>${posterList(b.posters)}
     <div class="acts"><a href="${gcal(b,d)}" target="_blank" rel="noopener">＋Google</a><button data-alt="${b.key}">裏番組を見る</button><button data-pin="${b.key}">${b.pinned?"固定を外す":"📌 必ず参加"}</button><button data-bex="${b.key}">✕ 行かない</button></div>${alts(b,d,cands)}</div>`;
@@ -602,6 +605,21 @@ function card(b,d,cands){
   const pk=b.sess?b.key:p.id;
   return `<div class="card ${b.kind} ${b.pinned?"pinned":""}">${body}
     <div class="acts"><a href="${gcal(b,d)}" target="_blank" rel="noopener">＋Google</a><button data-alt="${esc(b.key)}">裏番組を見る</button><button data-pin="${esc(pk)}">${b.pinned?"固定を外す":"📌 必ず参加"}</button><button data-bex="${esc(b.sess||b.kind==="S"?b.key:b.items.map(x=>x.id).join(","))}">✕ 行かない</button></div>${alts(b,d,cands)}</div>`;
+}
+// 空き時間に入れられる候補（点数0のものも含む）
+function gapAlts(d,s,e){
+  const id=`gap-${d}-${s}`, L=[];
+  A.filter(p=>p.day===d&&p.t==="S"&&keep(p,d)&&!st.ex.includes(p.id)&&p.st<e&&p.en>s).forEach(p=>L.push({key:p.id,kind:"S",st:p.st,en:p.en,venue:p.venue,txt:p.title,sc:score(p).sc}));
+  const talks=A.filter(p=>p.day===d&&(p.t==="O"||p.t==="M")&&keep(p,d)&&!st.ex.includes(p.id));
+  if(st.hop==="free") talks.filter(p=>p.st<e&&p.en>s).forEach(p=>L.push({key:p.id,kind:p.t,st:p.st,en:p.en,venue:p.venue,txt:p.title,sc:score(p).sc}));
+  else { const g={}; talks.filter(p=>p.sst<e&&p.sen>s).forEach(p=>{const k=sesKey(p,d);(g[k]=g[k]||[]).push(p)});
+    Object.entries(g).forEach(([k,arr])=>{if(st.ex.includes(k))return;const a=arr[0];const sc=arr.reduce((x,y)=>x+score(y).sc,0)/arr.length;
+      L.push({key:k,kind:a.t,st:a.sst,en:a.sen,venue:a.venue,txt:`${a.theme}（${a.sess.replace("一般演題","")}・${arr.length}演題）`,sc})}); }
+  const [p0,p1]=DAYS[d].slot; if(p0<e&&p1>s&&!st.ex.includes("POSTER"+d)) L.push({key:"POSTER"+d,kind:"P",st:p0,en:p1,venue:"ポスター会場",txt:"ポスター示説（おすすめポスター見学）",sc:0});
+  L.sort((a,b)=>b.sc-a.sc||a.st-b.st);
+  const top=L.slice(0,15);
+  return {id,btn:L.length?`<button data-gapalt="${id}">この時間の他の予定を見る（${L.length}件）</button>`:`<span class="sub" style="display:inline">（この時間に入れられる他の予定はありません）</span>`,
+    box:`<div class="alts" id="${id}">${top.length?top.map(c=>`<div class="alt"><span class="t"><span class="typ" style="background:${TYPES[c.kind].col};font-size:10px">${TYPES[c.kind].short}</span> <span class="venue">${esc(c.venue)}</span> ${fmt(c.st)}〜${fmt(c.en)} ${esc(c.txt)} <span class="sub" style="display:inline">(${Math.round(c.sc)}点)</span></span><button data-pick="${esc(c.key)}">これにする</button></div>`).join("")+(L.length>15?`<div class="sub">ほか${L.length-15}件（点数の高い順に15件を表示）</div>`:""):"<div class='sub'>この時間に入れられる予定はありません</div>"}</div>`};
 }
 function label(c){
   if(c.kind==="P") return "ポスター示説（おすすめポスター見学）";
@@ -649,9 +667,11 @@ const togg=(arr,x)=>arr.includes(x)?arr.filter(y=>y!==x):[...arr,x];
 
 document.addEventListener("change",e=>{const ty=e.target.dataset&&e.target.dataset.ty;if(ty){st.types=togg(st.types,ty);update()}});
 document.addEventListener("click",e=>{
-  const t=e.target.closest("[data-psort],[data-c],[data-d],[data-pin],[data-bex],[data-alt],[data-swap],[data-ps],[data-pex]"); if(!t) return;
+  const t=e.target.closest("[data-gapalt],[data-pick],[data-psort],[data-c],[data-d],[data-pin],[data-bex],[data-alt],[data-swap],[data-ps],[data-pex]"); if(!t) return;
   const ds=t.dataset;
-  if(ds.psort){st.psort=ds.psort}
+  if(ds.gapalt){document.getElementById(ds.gapalt).classList.toggle("show");return}
+  else if(ds.pick){st.ex=st.ex.filter(x=>x!==ds.pick);const n=pinNewest(ds.pick);st._check=ds.pick;toast(n>0?`予定に入れました（重なっていた固定${n}件を外しました）`:"予定に入れました（📌固定）")}
+  else if(ds.psort){st.psort=ds.psort}
   else if(ds.c){st.cats[ds.c]=((st.cats[ds.c]||0)+1)%3}
   else if(ds.d){st.tab=+ds.d}
   else if(ds.alt){document.getElementById("alt-"+ds.alt).classList.toggle("show");return}
