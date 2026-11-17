@@ -493,6 +493,14 @@ function posterRank(d){
     .sort((a,b)=>(st.psaved.includes(b.p.id)-st.psaved.includes(a.p.id))||b.s-a.s||a.p.num-b.p.num);
 }
 // 会場が変わるときだけ移動時間を確保する重み付き区間スケジューリング
+function pinInterval(k){
+  if(k.startsWith("POSTER")){const d=+k.slice(6);return {d,st:DAYS[d].slot[0],en:DAYS[d].slot[1],venue:"ポスター会場"}}
+  if(k.startsWith("SES:")){const L=A.filter(a=>a.t!=="S"&&a.t!=="P"&&sesKey(a,a.day)===k);if(!L.length)return null;return {d:L[0].day,st:L[0].sst,en:L[0].sen,venue:L[0].venue}}
+  const p=byId[k]; if(!p||p.t==="P") return null; return {d:p.day,st:p.st,en:p.en,venue:p.venue};
+}
+function clashI(a,b){if(!a||!b||a.d!==b.d)return false;const g=a.venue===b.venue?0:st.buf;return a.st<b.en+g&&b.st<a.en+g}
+// 新しく固定したものと時間が重なる、以前の固定を外す（最後に選んだものを優先）
+function pinNewest(k){const I=pinInterval(k);const before=st.pin.length;st.pin=st.pin.filter(x=>x!==k&&!clashI(pinInterval(x),I));st.pin.push(k);return before-(st.pin.length-1)}
 const HOP=0.8; // 別の枠へ移るたびの小さな減点（細切れの渡り歩きを抑える）
 function plan(d){
   const c=candidates(d).sort((a,b)=>a.en-b.en||a.st-b.st);
@@ -635,7 +643,8 @@ async function saveFile(filename,data,mime){
 }
 function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800)}
 function showModal(a,b,c){document.getElementById("mTitle").textContent=a;document.getElementById("mNote").textContent=b;document.getElementById("mText").value=c;document.getElementById("modal").classList.add("show")}
-function update(){save();render();const ps=document.getElementById("psort");if(ps)ps.value=st.psort}
+function update(){save();render();
+  if(st._check){const k=st._check;delete st._check;const ok=Object.values(window.__P||{}).some(p=>p.blocks.some(b=>b.key===k||b.items.some(x=>x.id===k)));if(!ok)toast("選んだ予定を入れられませんでした（固定どうしが重なっています）")}const ps=document.getElementById("psort");if(ps)ps.value=st.psort}
 const togg=(arr,x)=>arr.includes(x)?arr.filter(y=>y!==x):[...arr,x];
 
 document.addEventListener("change",e=>{const ty=e.target.dataset&&e.target.dataset.ty;if(ty){st.types=togg(st.types,ty);update()}});
@@ -646,15 +655,19 @@ document.addEventListener("click",e=>{
   else if(ds.c){st.cats[ds.c]=((st.cats[ds.c]||0)+1)%3}
   else if(ds.d){st.tab=+ds.d}
   else if(ds.alt){document.getElementById("alt-"+ds.alt).classList.toggle("show");return}
-  else if(ds.pin){st.pin=togg(st.pin,ds.pin)}
+  else if(ds.pin){ if(st.pin.includes(ds.pin)) st.pin=st.pin.filter(x=>x!==ds.pin); else { st.ex=st.ex.filter(x=>x!==ds.pin); const n=pinNewest(ds.pin); st._check=ds.pin; if(n>0) toast(`固定しました（重なっていた固定${n}件を外しました）`);} }
   else if(ds.bex){ds.bex.split(",").forEach(k=>{st.ex=[...st.ex,k];st.pin=st.pin.filter(x=>x!==k)});toast("予定から外しました")}
   else if(ds.swap){
-    const c=ds.swap; const pinKey=(c.startsWith("SES:")||c.startsWith("POSTER"))?c:c;
-    st.pin=[...st.pin.filter(x=>x!==ds.from),pinKey];
+    const c=ds.swap, pinKey=c;
+    st.pin=st.pin.filter(x=>x!==ds.from);
     const fromBlock=Object.values(window.__P).flatMap(p=>p.blocks).find(b=>b.key===ds.from);
     const exKeys=fromBlock?(fromBlock.sess||fromBlock.kind==="S"||fromBlock.kind==="P"?[fromBlock.key]:fromBlock.items.map(x=>x.id)):[ds.from];
-    st.ex=[...st.ex.filter(x=>x!==c),...exKeys]; st.pin=st.pin.filter(x=>!exKeys.includes(x)||x===pinKey);
-    toast("差し替えました");
+    st.ex=[...st.ex.filter(x=>x!==c),...exKeys]; st.pin=st.pin.filter(x=>!exKeys.includes(x));
+    // セッション単位の候補を選んだら、その中の演題の除外は解除
+    if(c.startsWith("SES:")) st.ex=st.ex.filter(x=>!(byId[x]&&sesKey(byId[x],byId[x].day)===c));
+    const n=pinNewest(pinKey);
+    st._check=pinKey;
+    toast(n>0?`差し替えました（重なっていた固定${n}件を外しました）`:"差し替えました");
   }
   else if(ds.ps){st.psaved=togg(st.psaved,ds.ps)}
   else if(ds.pex){st.ex=[...st.ex,ds.pex];st.psaved=st.psaved.filter(x=>x!==ds.pex)}
